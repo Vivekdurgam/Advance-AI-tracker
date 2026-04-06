@@ -4,6 +4,8 @@ import {
   LayoutDashboard, Ticket, Users, BarChart3, Plus, Zap,
 } from 'lucide-react';
 import { NotificationBell } from '@/components/NotificationBell';
+import { AppBootLoader } from '@/components/AppBootLoader';
+import { useTicketStore } from '@/context/TicketContext';
 import { useEscalation } from '@/hooks/useEscalation';
 
 const navItems = [
@@ -16,7 +18,12 @@ const navItems = [
 
 export const AppLayout = ({ children }: { children: ReactNode }) => {
   const location = useLocation();
+  const { loading, backendWakeup } = useTicketStore();
   useEscalation();
+
+  if (loading) {
+    return <AppBootLoader backendWakeup={backendWakeup} />;
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">

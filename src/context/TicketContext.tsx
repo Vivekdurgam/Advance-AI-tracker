@@ -18,6 +18,7 @@ interface TicketStore {
   employees: Employee[];
   notifications: Notification[];
   loading: boolean;
+  backendWakeup: boolean;
   addTicket: (ticket: Ticket) => Promise<void>;
   updateTicket: (id: string, updates: Partial<Ticket>) => Promise<void>;
   updateTicketStatus: (id: string, status: TicketStatus, actor: string) => Promise<void>;
@@ -97,20 +98,28 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [backendWakeup, setBackendWakeup] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const fetchAll = useCallback(async () => {
     try {
-      const ts = await api.fetchTickets();
-      const es = await api.fetchEmployees();
-      
+      const [ts, es] = await Promise.all([api.fetchTickets(), api.fetchEmployees()]);
+
       setTickets((ts || []).map(mapTicket));
       setEmployees((es || []).map(mapEmployee));
+      setHasLoadedOnce(true);
+      setBackendWakeup(false);
       setLoading(false);
-    } catch(err) {
+    } catch (err) {
       console.error(err);
-      setLoading(false);
+      if (!hasLoadedOnce) {
+        setBackendWakeup(true);
+        setLoading(true);
+      } else {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [hasLoadedOnce]);
 
   useEffect(() => {
     fetchAll();
@@ -189,7 +198,7 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
 
   return (
     <TicketContext.Provider value={{
-      tickets, employees, notifications, loading,
+      tickets, employees, notifications, loading, backendWakeup,
       addTicket, updateTicket, updateTicketStatus,
       addTimelineEntry, addInternalNote, setFeedback,
       addEmployee, updateEmployee, getEmployeeById,

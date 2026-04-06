@@ -27,7 +27,8 @@ cp backend/.env.example backend/.env
 - `DEBUG=False` for production
 - `ALLOWED_HOSTS` comma-separated hosts
 - `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`
-- `SQLITE_PATH` path to DB file (defaults to `backend/data/db.sqlite3`)
+- `DATABASE_URL` enables PostgreSQL (recommended for Render production)
+- `SQLITE_PATH` path is used only when `DATABASE_URL` is not set
 - `GROK_API_KEY` optional; if missing, app falls back to mock AI analysis
 - `GROK_MODEL`, `GROK_API_BASE_URL`, and optional `GROK_FALLBACK_MODELS` for local/production provider routing
 
@@ -85,7 +86,7 @@ What is production-hardened:
 - WhiteNoise static serving + `collectstatic`
 - Gunicorn WSGI runtime
 - API throttling and stricter request validation
-- SQLite PRAGMA tuning (`WAL`, `foreign_keys`, `synchronous`)
+- PostgreSQL via `DATABASE_URL` (with SQLite fallback for local/dev)
 
 ## 4. SQLite Backup
 

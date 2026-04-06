@@ -2,6 +2,7 @@ from pathlib import Path
 import os
 from urllib.parse import urlparse
 
+import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -99,23 +100,34 @@ TEMPLATES = [
 WSGI_APPLICATION = "ticketing_backend.wsgi.application"
 
 
-sqlite_path = Path(os.getenv("SQLITE_PATH", BASE_DIR / "data" / "db.sqlite3"))
-try:
-    sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-except OSError:
-    # Some build environments (for example Render build stage) expose paths such as
-    # /var/data as read-only. Runtime mounts are still writable, so we skip mkdir here.
-    pass
+database_url = os.getenv("DATABASE_URL", "").strip()
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": sqlite_path,
-        "OPTIONS": {
-            "timeout": int(os.getenv("SQLITE_TIMEOUT_SECONDS", "20")),
-        },
+if database_url:
+    DATABASES = {
+        "default": dj_database_url.parse(
+            database_url,
+            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "600")),
+            ssl_require=env_bool("DB_SSL_REQUIRE", not DEBUG),
+        )
     }
-}
+else:
+    sqlite_path = Path(os.getenv("SQLITE_PATH", BASE_DIR / "data" / "db.sqlite3"))
+    try:
+        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        # Some build environments (for example Render build stage) expose paths such as
+        # /var/data as read-only. Runtime mounts are still writable, so we skip mkdir here.
+        pass
+
+    DATABASES = {
+        "default": {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": sqlite_path,
+            "OPTIONS": {
+                "timeout": int(os.getenv("SQLITE_TIMEOUT_SECONDS", "20")),
+            },
+        }
+    }
 
 
 AUTH_PASSWORD_VALIDATORS = [
