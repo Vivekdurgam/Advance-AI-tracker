@@ -80,7 +80,12 @@ WSGI_APPLICATION = "ticketing_backend.wsgi.application"
 
 
 sqlite_path = Path(os.getenv("SQLITE_PATH", BASE_DIR / "data" / "db.sqlite3"))
-sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+try:
+    sqlite_path.parent.mkdir(parents=True, exist_ok=True)
+except OSError:
+    # Some build environments (for example Render build stage) expose paths such as
+    # /var/data as read-only. Runtime mounts are still writable, so we skip mkdir here.
+    pass
 
 DATABASES = {
     "default": {
