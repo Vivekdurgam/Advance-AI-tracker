@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+from urllib.parse import urlparse
 
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
@@ -21,6 +22,19 @@ def env_list(name: str, default: str = "") -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def env_hosts(name: str, default: str = "") -> list[str]:
+    hosts = []
+    for item in env_list(name, default):
+        normalized = item
+        if "://" in item:
+            parsed = urlparse(item)
+            normalized = parsed.netloc or parsed.path
+        normalized = normalized.strip().rstrip("/")
+        if normalized and normalized not in hosts:
+            hosts.append(normalized)
+    return hosts
+
+
 DEBUG = env_bool("DEBUG", False)
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -30,7 +44,13 @@ if not SECRET_KEY:
     else:
         raise ImproperlyConfigured("SECRET_KEY environment variable is required when DEBUG=False.")
 
-ALLOWED_HOSTS = env_list("ALLOWED_HOSTS", "127.0.0.1,localhost")
+ALLOWED_HOSTS = env_hosts("ALLOWED_HOSTS", "127.0.0.1,localhost")
+for local_host in ("127.0.0.1", "localhost"):
+    if local_host not in ALLOWED_HOSTS:
+        ALLOWED_HOSTS.append(local_host)
+render_external_hostname = os.getenv("RENDER_EXTERNAL_HOSTNAME")
+if render_external_hostname and render_external_hostname not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(render_external_hostname)
 
 
 INSTALLED_APPS = [
