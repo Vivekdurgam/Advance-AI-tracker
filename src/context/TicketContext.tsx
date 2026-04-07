@@ -93,6 +93,21 @@ function mapEmployee(e: any): Employee {
   };
 }
 
+function toEmployeePayload(employee: Partial<Employee>) {
+  const payload: Record<string, any> = {};
+
+  if (employee.name !== undefined) payload.name = employee.name;
+  if (employee.email !== undefined) payload.email = employee.email;
+  if (employee.department !== undefined) payload.department = employee.department;
+  if (employee.role !== undefined) payload.role = employee.role;
+  if (employee.skillTags !== undefined) payload.skill_tags = employee.skillTags.join(", ");
+  if (employee.avgResolutionTime !== undefined) payload.avg_resolution_time = employee.avgResolutionTime;
+  if (employee.currentTicketLoad !== undefined) payload.current_load = employee.currentTicketLoad;
+  if (employee.availability !== undefined) payload.availability_status = employee.availability;
+
+  return payload;
+}
+
 export const TicketProvider = ({ children }: { children: ReactNode }) => {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -103,13 +118,35 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
 
   const fetchAll = useCallback(async () => {
     try {
-      const [ts, es] = await Promise.all([api.fetchTickets(), api.fetchEmployees()]);
+      const [ticketsResult, employeesResult] = await Promise.allSettled([
+        api.fetchTickets(),
+        api.fetchEmployees(),
+      ]);
 
-      setTickets((ts || []).map(mapTicket));
-      setEmployees((es || []).map(mapEmployee));
-      setHasLoadedOnce(true);
-      setBackendWakeup(false);
-      setLoading(false);
+      let hadSuccess = false;
+
+      if (ticketsResult.status === "fulfilled") {
+        setTickets((ticketsResult.value || []).map(mapTicket));
+        hadSuccess = true;
+      } else {
+        console.error("Failed to fetch tickets", ticketsResult.reason);
+      }
+
+      if (employeesResult.status === "fulfilled") {
+        setEmployees((employeesResult.value || []).map(mapEmployee));
+        hadSuccess = true;
+      } else {
+        console.error("Failed to fetch employees", employeesResult.reason);
+      }
+
+      if (hadSuccess) {
+        setHasLoadedOnce(true);
+        setBackendWakeup(false);
+        setLoading(false);
+        return;
+      }
+
+      throw new Error("Failed to fetch tickets and employees");
     } catch (err) {
       console.error(err);
       if (!hasLoadedOnce) {
@@ -179,12 +216,27 @@ export const TicketProvider = ({ children }: { children: ReactNode }) => {
   }, [fetchAll]);
 
   const addEmployee = useCallback(async (employee: Employee) => {
-      // Create employee
-  }, []);
+    const payload = toEmployeePayload(employee);
+    await api.createEmployee(payload);
+    await fetchAll();
+  }, [fetchAll]);
 
   const updateEmployee = useCallback(async (id: string, updates: Partial<Employee>) => {
-      // Not implemented full
-  }, []);
+    const payload = toEmployeePayload(updates);
+
+    // `isActive` is currently frontend-only and has no backend column.
+    if (Object.keys(payload).length === 0) {
+      setEmployees((prev) =>
+        prev.map((emp) =>
+          emp.id === String(id) ? { ...emp, ...updates } : emp
+        )
+      );
+      return;
+    }
+
+    await api.updateEmployee(Number(id), payload);
+    await fetchAll();
+  }, [fetchAll]);
 
   const getEmployeeById = useCallback((id: string) => {
     return employees.find(e => e.id === String(id));

@@ -37,7 +37,7 @@ backend/__pycache__/
 **/__pycache__/
 *.pyc
 
-# SQLite / runtime data
+# Runtime data
 backend/db.sqlite3
 backend/data/
 backend/staticfiles/

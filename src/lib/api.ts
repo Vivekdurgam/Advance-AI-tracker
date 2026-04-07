@@ -80,6 +80,18 @@ export const fetchAnalytics = async () => request<any>("/analytics/");
 
 export const fetchEmployees = async () => request<any[]>("/employees/");
 
+export const createEmployee = async (employeeData: any) =>
+  request<any>("/employees/", {
+    method: "POST",
+    body: JSON.stringify(employeeData),
+  });
+
+export const updateEmployee = async (id: number, updates: any) =>
+  request<any>(`/employees/${id}/`, {
+    method: "PATCH",
+    body: JSON.stringify(updates),
+  });
+
 export const analyzeTicket = async (data: any) =>
   request<any>("/tickets/analyze/", {
     method: "POST",

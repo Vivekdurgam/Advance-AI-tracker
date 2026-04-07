@@ -3,7 +3,7 @@
 Production-ready full-stack ticketing system with:
 - React + Vite frontend
 - Django REST backend
-- SQLite persistence (with WAL tuning and backup script)
+- PostgreSQL persistence
 
 ## 1. Environment Setup
 
@@ -27,8 +27,7 @@ cp backend/.env.example backend/.env
 - `DEBUG=False` for production
 - `ALLOWED_HOSTS` comma-separated hosts
 - `CORS_ALLOWED_ORIGINS` and `CSRF_TRUSTED_ORIGINS`
-- `DATABASE_URL` enables PostgreSQL (recommended for Render production)
-- `SQLITE_PATH` path is used only when `DATABASE_URL` is not set
+- `DATABASE_URL` required PostgreSQL connection string
 - `GROK_API_KEY` optional; if missing, app falls back to mock AI analysis
 - `GROK_MODEL`, `GROK_API_BASE_URL`, and optional `GROK_FALLBACK_MODELS` for local/production provider routing
 
@@ -86,21 +85,13 @@ What is production-hardened:
 - WhiteNoise static serving + `collectstatic`
 - Gunicorn WSGI runtime
 - API throttling and stricter request validation
-- PostgreSQL via `DATABASE_URL` (with SQLite fallback for local/dev)
+- PostgreSQL via required `DATABASE_URL`
 
-## 4. SQLite Backup
+Render note:
+- Use the Render PostgreSQL service `Internal Database URL` as `DATABASE_URL`.
+- Do not use placeholder values such as `postgresql://user:password@host:5432/database`.
 
-Run a consistent SQLite backup (safe while app is online):
-
-```bash
-cd backend
-python backup_sqlite.py
-```
-
-Optional env for backups:
-- `SQLITE_BACKUP_DIR` (default `backend/data/backups`)
-
-## 5. Notes
+## 4. Notes
 
 - Rotate old secrets before deploying publicly.
-- SQLite is suitable for small/medium workloads; for high concurrency, migrate to PostgreSQL.
+- Create regular PostgreSQL backups using your provider tooling (for Render-managed Postgres, use Render backups/snapshots).

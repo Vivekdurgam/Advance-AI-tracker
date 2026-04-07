@@ -54,28 +54,33 @@ export const DirectoryPage = () => {
     setShowForm(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!formData.name.trim() || !formData.email.trim()) {
       toast.error('Name and email required');
       return;
     }
     const skills = formData.skillTags.split(',').map(s => s.trim()).filter(Boolean);
-    if (editingEmployee) {
-      updateEmployee(editingEmployee.id, {
-        name: formData.name, email: formData.email, department: formData.department,
-        role: formData.role, skillTags: skills, availability: formData.availability,
-      });
-      toast.success('Employee updated');
-    } else {
-      addEmployee({
-        id: `emp-${crypto.randomUUID().slice(0, 8)}`,
-        name: formData.name, email: formData.email, department: formData.department,
-        role: formData.role, skillTags: skills, avgResolutionTime: 0,
-        currentTicketLoad: 0, availability: formData.availability, isActive: true,
-      });
-      toast.success('Employee added');
+    try {
+      if (editingEmployee) {
+        await updateEmployee(editingEmployee.id, {
+          name: formData.name, email: formData.email, department: formData.department,
+          role: formData.role, skillTags: skills, availability: formData.availability,
+        });
+        toast.success('Employee updated');
+      } else {
+        await addEmployee({
+          id: `emp-${crypto.randomUUID().slice(0, 8)}`,
+          name: formData.name, email: formData.email, department: formData.department,
+          role: formData.role, skillTags: skills, avgResolutionTime: 0,
+          currentTicketLoad: 0, availability: formData.availability, isActive: true,
+        });
+        toast.success('Employee added');
+      }
+      setShowForm(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to save employee';
+      toast.error(message);
     }
-    setShowForm(false);
   };
 
   return (
@@ -116,9 +121,14 @@ export const DirectoryPage = () => {
                 <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => openEdit(emp)}>
                   <Edit className="w-3.5 h-3.5" />
                 </Button>
-                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => {
-                  updateEmployee(emp.id, { isActive: !emp.isActive });
-                  toast.success(emp.isActive ? 'Deactivated' : 'Activated');
+                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={async () => {
+                  try {
+                    await updateEmployee(emp.id, { isActive: !emp.isActive });
+                    toast.success(emp.isActive ? 'Deactivated' : 'Activated');
+                  } catch (error) {
+                    const message = error instanceof Error ? error.message : 'Failed to update employee';
+                    toast.error(message);
+                  }
                 }}>
                   <UserX className="w-3.5 h-3.5" />
                 </Button>

@@ -3,6 +3,7 @@ import os
 from urllib.parse import urlparse
 
 import dj_database_url
+
 from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
@@ -34,6 +35,25 @@ def env_hosts(name: str, default: str = "") -> list[str]:
         if normalized and normalized not in hosts:
             hosts.append(normalized)
     return hosts
+
+
+def is_placeholder_database_url(value: str) -> bool:
+    # Guard against template/example values accidentally copied into production.
+    normalized = value.strip()
+    if not normalized:
+        return False
+
+    if "<" in normalized or ">" in normalized:
+        return True
+
+    if normalized == "postgresql://user:password@host:5432/database":
+        return True
+
+    parsed = urlparse(normalized)
+    host = (parsed.hostname or "").lower()
+    username = (parsed.username or "").lower()
+    database_name = parsed.path.lstrip("/").lower()
+    return host == "host" and username == "user" and database_name == "database"
 
 
 DEBUG = env_bool("DEBUG", False)
@@ -101,33 +121,32 @@ WSGI_APPLICATION = "ticketing_backend.wsgi.application"
 
 
 database_url = os.getenv("DATABASE_URL", "").strip()
+if not database_url:
+    raise ImproperlyConfigured(
+        "DATABASE_URL environment variable is required. "
+        "This backend is PostgreSQL-only."
+    )
 
-if database_url:
-    DATABASES = {
-        "default": dj_database_url.parse(
-            database_url,
-            conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "600")),
-            ssl_require=env_bool("DB_SSL_REQUIRE", not DEBUG),
-        )
-    }
-else:
-    sqlite_path = Path(os.getenv("SQLITE_PATH", BASE_DIR / "data" / "db.sqlite3"))
-    try:
-        sqlite_path.parent.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        # Some build environments (for example Render build stage) expose paths such as
-        # /var/data as read-only. Runtime mounts are still writable, so we skip mkdir here.
-        pass
+if is_placeholder_database_url(database_url):
+    raise ImproperlyConfigured(
+        "DATABASE_URL is using a placeholder value. "
+        "Set DATABASE_URL to your real PostgreSQL connection string (for Render, use the "
+        "database Internal URL)."
+    )
 
-    DATABASES = {
-        "default": {
-            "ENGINE": "django.db.backends.sqlite3",
-            "NAME": sqlite_path,
-            "OPTIONS": {
-                "timeout": int(os.getenv("SQLITE_TIMEOUT_SECONDS", "20")),
-            },
-        }
-    }
+parsed_database_url = urlparse(database_url)
+if parsed_database_url.scheme.lower() not in {"postgres", "postgresql"}:
+    raise ImproperlyConfigured(
+        "DATABASE_URL must use a PostgreSQL scheme (postgresql:// or postgres://)."
+    )
+
+DATABASES = {
+    "default": dj_database_url.parse(
+        database_url,
+        conn_max_age=int(os.getenv("DB_CONN_MAX_AGE", "600")),
+        ssl_require=env_bool("DB_SSL_REQUIRE", not DEBUG),
+    )
+}
 
 
 AUTH_PASSWORD_VALIDATORS = [
