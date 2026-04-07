@@ -135,6 +135,8 @@ def analyze_ticket_text(title, description):
           you MUST set "recommended_resolution_path" to "Auto-resolve".
         - For these Auto-resolve cases, "auto_resolve_response" must include clear next steps and when to contact IT/HR.
         - Do NOT assign simple password-help tickets to department unless the user explicitly says reset flow is broken after trying steps.
+        - NEVER set "Auto-resolve" for backend/server/database outage, production incident, JavaScript/runtime failures, or crash-style issues.
+          These must be "Assign to department" even if brief troubleshooting tips are known.
         """
 
         last_error = None
