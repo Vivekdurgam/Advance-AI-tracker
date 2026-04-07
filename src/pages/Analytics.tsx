@@ -1,6 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
 import { useTicketStore } from '@/context/TicketContext';
-import { fetchAnalytics } from "@/lib/api";
 import { Card } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Ticket, ArrowUp, CheckCircle, AlertTriangle, Clock, ThumbsUp } from 'lucide-react';
@@ -13,57 +11,35 @@ const COLORS = [
 
 export const AnalyticsPage = () => {
   const { tickets, employees } = useTicketStore();
-  const { data: analytics } = useQuery({
-    queryKey: ['analytics'],
-    queryFn: fetchAnalytics,
-    refetchInterval: 10000,
-  });
 
-  const fallbackTotal = tickets.length;
-  const fallbackOpen = tickets.filter(t => !['Resolved', 'Closed'].includes(t.status)).length;
-  const fallbackResolved = tickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length;
-  const fallbackAutoResolved = tickets.filter(t => t.isAutoResolved).length;
-  const fallbackEscalated = tickets.filter(t => t.escalated).length;
+  const total = tickets.length;
+  const open = tickets.filter(t => !['Resolved', 'Closed'].includes(t.status)).length;
+  const resolved = tickets.filter(t => t.status === 'Resolved' || t.status === 'Closed').length;
+  const autoResolved = tickets.filter(t => t.isAutoResolved).length;
+  const escalated = tickets.filter(t => t.escalated).length;
 
   const autoHelpful = tickets.filter(t => t.isAutoResolved && t.feedbackHelpful === true).length;
   const autoFeedbackTotal = tickets.filter(t => t.isAutoResolved && t.feedbackHelpful !== null).length;
-  const fallbackSuccessRate = autoFeedbackTotal > 0 ? Math.round((autoHelpful / autoFeedbackTotal) * 100) : 0;
-
-  const total = analytics?.total ?? fallbackTotal;
-  const open = analytics?.open ?? fallbackOpen;
-  const resolved = analytics?.resolved ?? fallbackResolved;
-  const autoResolved = analytics?.auto_resolved ?? fallbackAutoResolved;
-  const escalated = analytics?.escalated ?? fallbackEscalated;
-  const successRate = analytics?.auto_resolve_success_rate ?? fallbackSuccessRate;
+  const successRate = autoFeedbackTotal > 0 ? Math.round((autoHelpful / autoFeedbackTotal) * 100) : 0;
 
   // Department breakdown
-  const fallbackDeptData = tickets.reduce((acc, t) => {
+  const deptData = tickets.reduce((acc, t) => {
     const dept = t.assignedDepartment || 'Unassigned';
     acc[dept] = (acc[dept] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-  const deptChartData = analytics?.department_load?.length
-    ? analytics.department_load.map((row: { department: string; load: number }) => ({
-        name: row.department,
-        value: row.load,
-      }))
-    : Object.entries(fallbackDeptData).map(([name, value]) => ({ name, value }));
+  const deptChartData = Object.entries(deptData).map(([name, value]) => ({ name, value }));
 
   // Category breakdown
-  const fallbackCatData = tickets.reduce((acc, t) => {
+  const catData = tickets.reduce((acc, t) => {
     const cat = t.aiAnalysis?.category || 'Unknown';
     acc[cat] = (acc[cat] || 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-  const catChartData = analytics?.top_categories_this_week?.length
-    ? analytics.top_categories_this_week.map((row: { category: string; count: number }) => ({
-        name: row.category,
-        count: row.count,
-      }))
-    : Object.entries(fallbackCatData)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([name, count]) => ({ name, count }));
+  const catChartData = Object.entries(catData)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, count]) => ({ name, count }));
 
   const stats = [
     { label: 'Total Tickets', value: total, icon: Ticket, color: 'text-primary' },
@@ -97,7 +73,7 @@ export const AnalyticsPage = () => {
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(215, 20%, 55%)' }} />
                 <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 20%, 55%)' }} />
                 <Tooltip contentStyle={{ background: 'hsl(222, 44%, 8%)', border: '1px solid hsl(222, 30%, 16%)', borderRadius: 8 }} />
-                <Bar dataKey="value" fill="hsl(187, 100%, 48%)" radius={[4, 4, 0, 0]} minPointSize={6} />
+                <Bar dataKey="value" fill="hsl(173, 58%, 45%)" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -106,7 +82,7 @@ export const AnalyticsPage = () => {
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-sm font-semibold mb-4">Top Categories (This Week)</h2>
+          <h2 className="text-sm font-semibold mb-4">Top Categories</h2>
           {catChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -121,6 +97,7 @@ export const AnalyticsPage = () => {
           )}
         </Card>
       </div>
+
       <Card className="p-6">
         <h2 className="text-sm font-semibold mb-4">Employee Load Overview</h2>
         <div className="overflow-x-auto">
