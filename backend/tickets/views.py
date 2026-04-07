@@ -19,22 +19,6 @@ AUTO_RESOLVE_PATH = "Auto-resolve"
 ASSIGN_PATH = "Assign to department"
 ALWAYS_ASSIGN_CATEGORIES = {"Server", "DB"}
 ALWAYS_ASSIGN_SEVERITIES = {"Critical"}
-INCIDENT_KEYWORDS = (
-    "backend",
-    "server",
-    "database",
-    "db",
-    "outage",
-    "down",
-    "not working",
-    "crash",
-    "exception",
-    "500",
-    "timeout",
-    "deploy",
-    "javascript",
-    "api",
-)
 
 
 def _normalize_resolution_path(route_value):
@@ -86,17 +70,13 @@ def _normalize_ai_response(ai_data):
     }
 
 
-def _needs_human_assignment(ai_data, title, description):
+def _needs_human_assignment(ai_data):
     category = ai_data.get("category")
     severity = ai_data.get("severity")
-    text = f"{title} {description}".lower()
 
     if category in ALWAYS_ASSIGN_CATEGORIES:
         return True
     if severity in ALWAYS_ASSIGN_SEVERITIES:
-        return True
-    if any(keyword in text for keyword in INCIDENT_KEYWORDS):
-        # Infra/engineering signals should go to a human assignee.
         return True
     return False
 
@@ -114,7 +94,7 @@ class TicketViewSet(viewsets.ModelViewSet):
 
         ai_data = _normalize_ai_response(analyze_ticket_text(title, description))
         route = ai_data.get("recommended_resolution_path", "")
-        if _needs_human_assignment(ai_data, title, description):
+        if _needs_human_assignment(ai_data):
             route = ASSIGN_PATH
 
         if route == AUTO_RESOLVE_PATH and not ai_data.get("auto_resolve_response"):
@@ -176,7 +156,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         description = request.data.get("description", "")
         ai_data = _normalize_ai_response(analyze_ticket_text(title, description))
         route = ai_data.get("recommended_resolution_path", ASSIGN_PATH)
-        if _needs_human_assignment(ai_data, title, description):
+        if _needs_human_assignment(ai_data):
             route = ASSIGN_PATH
         if route == AUTO_RESOLVE_PATH and not ai_data.get("auto_resolve_response"):
             route = ASSIGN_PATH
