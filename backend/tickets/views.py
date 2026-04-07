@@ -1,7 +1,10 @@
 import re
+from datetime import timedelta
 
 from django.db import transaction
-from django.db.models import Avg, Count, F
+from django.db.models import Avg, Count, DurationField, ExpressionWrapper, F, Value
+from django.db.models.functions import Coalesce
+from django.utils import timezone
 from rest_framework.response import Response
 from rest_framework.decorators import action
 from rest_framework import status
@@ -205,17 +208,60 @@ class TicketViewSet(viewsets.ModelViewSet):
 
 class AnalyticsViewSet(viewsets.ViewSet):
     def list(self, request):
+        resolved_statuses = ["Resolved", "Closed"]
         total_tickets = Ticket.objects.count()
-        resolved_tickets = Ticket.objects.filter(status="Resolved").count()
+        open_tickets = Ticket.objects.exclude(status__in=resolved_statuses).count()
+        resolved_tickets = Ticket.objects.filter(status__in=resolved_statuses).count()
         auto_resolved = Ticket.objects.filter(auto_resolved=True).count()
-        escalated = Ticket.objects.filter(history__action__icontains="Escalated").count()
-
-        categories = list(Ticket.objects.values("category").annotate(count=Count("category")).order_by("-count")[:5])
-
-        users_load = list(Employee.objects.values("department").annotate(load=Count("tickets")).order_by("-load"))
-        avg_res_time = list(
-            Employee.objects.values("department").annotate(avg_time=Avg("avg_resolution_time")).order_by("-avg_time")
+        escalated = (
+            Ticket.objects.filter(history__action__icontains="Escalated")
+            .values("id")
+            .distinct()
+            .count()
         )
+
+        now = timezone.now()
+        start_of_week = (now - timedelta(days=now.weekday())).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+        categories_this_week = list(
+            Ticket.objects.filter(created_at__gte=start_of_week)
+            .values("category")
+            .annotate(count=Count("id"))
+            .order_by("-count")[:5]
+        )
+
+        department_load = list(
+            Ticket.objects.exclude(status__in=resolved_statuses)
+            .annotate(department=Coalesce("predicted_department", Value("Unassigned")))
+            .values("department")
+            .annotate(load=Count("id"))
+            .order_by("-load")
+        )
+
+        avg_resolution_rows = list(
+            Ticket.objects.filter(status__in=resolved_statuses)
+            .annotate(
+                department=Coalesce("predicted_department", Value("Unassigned")),
+                resolution_duration=ExpressionWrapper(
+                    F("updated_at") - F("created_at"), output_field=DurationField()
+                ),
+            )
+            .values("department")
+            .annotate(avg_duration=Avg("resolution_duration"), resolved_count=Count("id"))
+            .order_by("-resolved_count")
+        )
+        avg_res_time = []
+        for row in avg_resolution_rows:
+            avg_duration = row.get("avg_duration")
+            avg_hours = round(avg_duration.total_seconds() / 3600, 2) if avg_duration else 0.0
+            avg_res_time.append(
+                {
+                    "department": row.get("department") or "Unassigned",
+                    "avg_hours": avg_hours,
+                    "resolved_count": row.get("resolved_count", 0),
+                }
+            )
 
         success_rate = 0
         if auto_resolved > 0:
@@ -224,11 +270,15 @@ class AnalyticsViewSet(viewsets.ViewSet):
 
         return Response({
             "total": total_tickets,
+            "open": open_tickets,
             "resolved": resolved_tickets,
             "auto_resolved": auto_resolved,
             "escalated": escalated,
-            "top_categories": categories,
-            "department_load": users_load,
+            "top_categories_this_week": categories_this_week,
+            # Backward-compatible alias for existing clients.
+            "top_categories": categories_this_week,
+            "department_load": department_load,
             "avg_resolution_by_department": avg_res_time,
             "auto_resolve_success_rate": round(success_rate, 2),
+            "week_start": start_of_week.isoformat(),
         })
