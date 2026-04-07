@@ -105,35 +105,43 @@ def analyze_ticket_text(title, description):
         timeout_seconds = int(os.getenv("GROK_TIMEOUT_SECONDS", "25"))
 
         prompt = f"""
-        Analyze the following ticket: Title: {title}. Description: {description}.
-        Return a strict JSON object responding to these rules:
-        Matrix mapping:
-        Database/corruption -> Engineering (Critical)
-        Server down -> Engineering/DevOps (Critical)
-        Payroll/salary -> Finance (No bump)
-        Leave/HR policy -> HR
-        Access/lock -> IT (High)
-        Product bug -> Product/Engineering (Medium/High based on issue)
-        Marketing -> Marketing
-        Legal -> Legal (High)
-        
-        Required JSON keys: 
-        "category" (string based on above matrix or Billing, Bug, Access, HR, Server, DB, Feature, Other),
-        "summary" (2-3 sentences),
-        "severity" (Critical, High, Medium, Low),
-        "recommended_resolution_path" (Auto-resolve OR Assign to department),
-        "sentiment" (Frustrated, Neutral, Polite),
-        "predicted_department" (Engineering, Finance, HR, IT, Product, Marketing, Legal),
-        "confidence_score" (float out of 100 max),
-        "estimated_resolution_time" (string, e.g. 2 hours),
-        "auto_resolve_response" (string, write a highly helpful response resolving the issue if recommended_resolution_path is Auto-resolve, else null)
+        Analyze the following support ticket.
+        Title: {title}
+        Description: {description}
+
+        Return ONLY one strict JSON object with these exact keys:
+        - "category": one of Billing, Bug, Access, HR, Server, DB, Feature, Other
+        - "summary": 2-3 concise sentences
+        - "severity": one of Critical, High, Medium, Low
+        - "recommended_resolution_path": exactly "Auto-resolve" or "Assign to department"
+        - "sentiment": one of Frustrated, Neutral, Polite
+        - "predicted_department": one of Engineering, Finance, HR, IT, Product, Marketing, Legal
+        - "confidence_score": float between 0 and 100
+        - "estimated_resolution_time": short string like "15 minutes", "2 hours"
+        - "auto_resolve_response": if path is Auto-resolve, provide concrete step-by-step user-facing instructions; else null
+
+        Routing matrix:
+        - Database corruption or DB outage -> category DB, department Engineering, severity Critical
+        - Server down/outage/performance incident -> category Server, department Engineering, severity Critical
+        - Payroll/salary/reimbursement -> category Billing, department Finance
+        - Leave policy / HR policy -> category HR, department HR
+        - Access/account/login/password issues -> category Access, department IT
+        - Product bug -> category Bug, department Product or Engineering
+        - Marketing requests -> category Other, department Marketing
+        - Legal/compliance -> category Other, department Legal, severity High
+
+        Auto-resolve policy (important):
+        - If user asks how to fix wrong password, forgot password, password reset, account unlock, FAQ/policy lookup, or status-check question,
+          you MUST set "recommended_resolution_path" to "Auto-resolve".
+        - For these Auto-resolve cases, "auto_resolve_response" must include clear next steps and when to contact IT/HR.
+        - Do NOT assign simple password-help tickets to department unless the user explicitly says reset flow is broken after trying steps.
         """
 
         last_error = None
         for model_name in models_to_try:
             body = {
                 "model": model_name,
-                "temperature": 0.2,
+                "temperature": 0,
                 "messages": [
                     {
                         "role": "system",

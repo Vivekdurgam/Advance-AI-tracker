@@ -18,17 +18,6 @@ from users.models import Employee
 AUTO_RESOLVE_PATH = "Auto-resolve"
 ASSIGN_PATH = "Assign to department"
 
-CRITICAL_INCIDENT_KEYWORDS = (
-    "server down",
-    "database down",
-    "outage",
-    "production down",
-    "data corruption",
-    "crash",
-    "security breach",
-    "incident",
-)
-
 
 def _normalize_resolution_path(route_value):
     text = str(route_value or "").strip().lower()
@@ -41,61 +30,7 @@ def _normalize_resolution_path(route_value):
     return ASSIGN_PATH
 
 
-def _should_force_auto_resolve(title, description):
-    text = f"{title} {description}".strip().lower()
-    if not text:
-        return False
-
-    if any(keyword in text for keyword in CRITICAL_INCIDENT_KEYWORDS):
-        return False
-
-    password_reset = ("password" in text or "passcode" in text) and any(
-        phrase in text for phrase in ("reset", "forgot", "forgotten", "change password")
-    )
-    leave_policy = ("leave" in text and "policy" in text) or ("hr policy" in text)
-    general_faq = "faq" in text
-    status_update = any(
-        phrase in text
-        for phrase in ("status update", "status of my ticket", "ticket status", "update on my ticket")
-    )
-    billing_clarification = any(term in text for term in ("billing", "invoice", "reimbursement", "charge")) and any(
-        phrase in text for phrase in ("clarify", "clarification", "question", "explain", "breakdown")
-    )
-
-    return any((password_reset, leave_policy, general_faq, status_update, billing_clarification))
-
-
-def _default_auto_response(title, description):
-    text = f"{title} {description}".lower()
-    if "password" in text or "passcode" in text:
-        return (
-            "You can reset your password from the login page using the 'Forgot Password' option. "
-            "Use your work email, complete verification, and set a new strong password. "
-            "If the reset email is delayed, check spam and then contact IT support."
-        )
-    if "leave" in text and "policy" in text:
-        return (
-            "You can find the leave policy on the HR portal under Policies > Leave. "
-            "That page includes eligibility, carry-forward, and approval flow. "
-            "If you need case-specific clarification, HR can review your request."
-        )
-    if any(phrase in text for phrase in ("status update", "status of my ticket", "ticket status", "update on my ticket")):
-        return (
-            "You can check the latest status directly in the Tickets page. "
-            "Open your ticket to view timeline updates, notes, and current owner."
-        )
-    if any(term in text for term in ("billing", "invoice", "reimbursement", "charge")):
-        return (
-            "For billing clarification, please check the related invoice/reimbursement entry in the finance portal "
-            "and compare amount, date, and cost center. If anything is still unclear, Finance can verify the line item."
-        )
-    return (
-        "This appears to be a standard support request and can usually be resolved with self-service guidance. "
-        "Please follow the documented steps in the internal help center, and reopen if the issue remains."
-    )
-
-
-def _normalize_ai_response(ai_data, title="", description=""):
+def _normalize_ai_response(ai_data):
     categories = {choice[0] for choice in Ticket.CATEGORY_CHOICES}
     severities = {choice[0] for choice in Ticket.SEVERITY_CHOICES}
 
@@ -114,15 +49,11 @@ def _normalize_ai_response(ai_data, title="", description=""):
         confidence_score = 0.0
 
     route = _normalize_resolution_path(ai_data.get("recommended_resolution_path"))
-    if _should_force_auto_resolve(title, description):
-        route = AUTO_RESOLVE_PATH
-
     auto_resolve_response = ai_data.get("auto_resolve_response")
-    if route == AUTO_RESOLVE_PATH:
-        if not isinstance(auto_resolve_response, str) or not auto_resolve_response.strip():
-            auto_resolve_response = _default_auto_response(title, description)
-        else:
-            auto_resolve_response = auto_resolve_response.strip()
+    if isinstance(auto_resolve_response, str):
+        auto_resolve_response = auto_resolve_response.strip()
+    else:
+        auto_resolve_response = None
 
     return {
         "category": category,
@@ -148,7 +79,7 @@ class TicketViewSet(viewsets.ModelViewSet):
         title = input_serializer.validated_data["title"]
         description = input_serializer.validated_data["description"]
 
-        ai_data = _normalize_ai_response(analyze_ticket_text(title, description), title=title, description=description)
+        ai_data = _normalize_ai_response(analyze_ticket_text(title, description))
         route = ai_data.get("recommended_resolution_path", "")
         is_auto_resolve = route == AUTO_RESOLVE_PATH
 
@@ -204,7 +135,7 @@ class TicketViewSet(viewsets.ModelViewSet):
     def analyze(self, request):
         title = request.data.get("subject") or request.data.get("title", "")
         description = request.data.get("description", "")
-        ai_data = _normalize_ai_response(analyze_ticket_text(title, description), title=title, description=description)
+        ai_data = _normalize_ai_response(analyze_ticket_text(title, description))
         return Response({
             "category": ai_data.get("category", "Other"),
             "summary": ai_data.get("summary", ""),
