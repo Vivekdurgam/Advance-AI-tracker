@@ -65,8 +65,6 @@ export const AnalyticsPage = () => {
         .slice(0, 5)
         .map(([name, count]) => ({ name, count }));
 
-  const avgResolutionByDepartment = analytics?.avg_resolution_by_department || [];
-
   const stats = [
     { label: 'Total Tickets', value: total, icon: Ticket, color: 'text-primary' },
     { label: 'Open', value: open, icon: ArrowUp, color: 'text-warning' },
@@ -99,7 +97,7 @@ export const AnalyticsPage = () => {
                 <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(215, 20%, 55%)' }} />
                 <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 20%, 55%)' }} />
                 <Tooltip contentStyle={{ background: 'hsl(222, 44%, 8%)', border: '1px solid hsl(222, 30%, 16%)', borderRadius: 8 }} />
-                <Bar dataKey="value" fill="hsl(173, 58%, 45%)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="value" fill="hsl(187, 100%, 48%)" radius={[4, 4, 0, 0]} minPointSize={6} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -108,7 +106,7 @@ export const AnalyticsPage = () => {
         </Card>
 
         <Card className="p-6">
-          <h2 className="text-sm font-semibold mb-4">Top 5 Categories (This Week)</h2>
+          <h2 className="text-sm font-semibold mb-4">Top Categories (This Week)</h2>
           {catChartData.length > 0 ? (
             <ResponsiveContainer width="100%" height={250}>
               <PieChart>
@@ -123,54 +121,6 @@ export const AnalyticsPage = () => {
           )}
         </Card>
       </div>
-
-      <Card className="p-6">
-        <h2 className="text-sm font-semibold mb-4">Average Resolution Time by Department</h2>
-        {avgResolutionByDepartment.length > 0 ? (
-          <ResponsiveContainer width="100%" height={260}>
-            <BarChart
-              data={avgResolutionByDepartment.map((row: { department: string; avg_hours: number }) => ({
-                name: row.department,
-                avgHours: row.avg_hours,
-              }))}
-            >
-              <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'hsl(215, 20%, 55%)' }} />
-              <YAxis tick={{ fontSize: 11, fill: 'hsl(215, 20%, 55%)' }} />
-              <Tooltip contentStyle={{ background: 'hsl(222, 44%, 8%)', border: '1px solid hsl(222, 30%, 16%)', borderRadius: 8 }} />
-              <Bar dataKey="avgHours" fill="hsl(217, 91%, 60%)" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        ) : (
-          <p className="text-sm text-muted-foreground text-center py-12">No resolved-ticket data yet</p>
-        )}
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm mt-4">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="text-left py-2 text-muted-foreground font-medium">Department</th>
-                <th className="text-center py-2 text-muted-foreground font-medium">Resolved Tickets</th>
-                <th className="text-center py-2 text-muted-foreground font-medium">Avg Resolution Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              {avgResolutionByDepartment.length > 0 ? (
-                avgResolutionByDepartment.map((row: { department: string; avg_hours: number; resolved_count: number }) => (
-                  <tr key={row.department} className="border-b border-border/50">
-                    <td className="py-2.5">{row.department}</td>
-                    <td className="py-2.5 text-center">{row.resolved_count}</td>
-                    <td className="py-2.5 text-center">{row.avg_hours}h</td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td className="py-4 text-center text-muted-foreground" colSpan={3}>No data yet</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
       <Card className="p-6">
         <h2 className="text-sm font-semibold mb-4">Employee Load Overview</h2>
         <div className="overflow-x-auto">
