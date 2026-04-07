@@ -1,3 +1,5 @@
+import re
+
 from django.db import transaction
 from django.db.models import Avg, Count, F
 from rest_framework.response import Response
@@ -13,7 +15,87 @@ from .routing import find_best_assignee
 from users.models import Employee
 
 
-def _normalize_ai_response(ai_data):
+AUTO_RESOLVE_PATH = "Auto-resolve"
+ASSIGN_PATH = "Assign to department"
+
+CRITICAL_INCIDENT_KEYWORDS = (
+    "server down",
+    "database down",
+    "outage",
+    "production down",
+    "data corruption",
+    "crash",
+    "security breach",
+    "incident",
+)
+
+
+def _normalize_resolution_path(route_value):
+    text = str(route_value or "").strip().lower()
+    if not text:
+        return ASSIGN_PATH
+
+    compact = re.sub(r"[\s_-]+", "", text)
+    if "autoresolve" in compact or ("auto" in text and "resolve" in text):
+        return AUTO_RESOLVE_PATH
+    return ASSIGN_PATH
+
+
+def _should_force_auto_resolve(title, description):
+    text = f"{title} {description}".strip().lower()
+    if not text:
+        return False
+
+    if any(keyword in text for keyword in CRITICAL_INCIDENT_KEYWORDS):
+        return False
+
+    password_reset = ("password" in text or "passcode" in text) and any(
+        phrase in text for phrase in ("reset", "forgot", "forgotten", "change password")
+    )
+    leave_policy = ("leave" in text and "policy" in text) or ("hr policy" in text)
+    general_faq = "faq" in text
+    status_update = any(
+        phrase in text
+        for phrase in ("status update", "status of my ticket", "ticket status", "update on my ticket")
+    )
+    billing_clarification = any(term in text for term in ("billing", "invoice", "reimbursement", "charge")) and any(
+        phrase in text for phrase in ("clarify", "clarification", "question", "explain", "breakdown")
+    )
+
+    return any((password_reset, leave_policy, general_faq, status_update, billing_clarification))
+
+
+def _default_auto_response(title, description):
+    text = f"{title} {description}".lower()
+    if "password" in text or "passcode" in text:
+        return (
+            "You can reset your password from the login page using the 'Forgot Password' option. "
+            "Use your work email, complete verification, and set a new strong password. "
+            "If the reset email is delayed, check spam and then contact IT support."
+        )
+    if "leave" in text and "policy" in text:
+        return (
+            "You can find the leave policy on the HR portal under Policies > Leave. "
+            "That page includes eligibility, carry-forward, and approval flow. "
+            "If you need case-specific clarification, HR can review your request."
+        )
+    if any(phrase in text for phrase in ("status update", "status of my ticket", "ticket status", "update on my ticket")):
+        return (
+            "You can check the latest status directly in the Tickets page. "
+            "Open your ticket to view timeline updates, notes, and current owner."
+        )
+    if any(term in text for term in ("billing", "invoice", "reimbursement", "charge")):
+        return (
+            "For billing clarification, please check the related invoice/reimbursement entry in the finance portal "
+            "and compare amount, date, and cost center. If anything is still unclear, Finance can verify the line item."
+        )
+    return (
+        "This appears to be a standard support request and can usually be resolved with self-service guidance. "
+        "Please follow the documented steps in the internal help center, and reopen if the issue remains."
+    )
+
+
+def _normalize_ai_response(ai_data, title="", description=""):
     categories = {choice[0] for choice in Ticket.CATEGORY_CHOICES}
     severities = {choice[0] for choice in Ticket.SEVERITY_CHOICES}
 
@@ -31,6 +113,17 @@ def _normalize_ai_response(ai_data):
     except (TypeError, ValueError):
         confidence_score = 0.0
 
+    route = _normalize_resolution_path(ai_data.get("recommended_resolution_path"))
+    if _should_force_auto_resolve(title, description):
+        route = AUTO_RESOLVE_PATH
+
+    auto_resolve_response = ai_data.get("auto_resolve_response")
+    if route == AUTO_RESOLVE_PATH:
+        if not isinstance(auto_resolve_response, str) or not auto_resolve_response.strip():
+            auto_resolve_response = _default_auto_response(title, description)
+        else:
+            auto_resolve_response = auto_resolve_response.strip()
+
     return {
         "category": category,
         "summary": str(ai_data.get("summary", ""))[:4000],
@@ -39,8 +132,8 @@ def _normalize_ai_response(ai_data):
         "sentiment": str(ai_data.get("sentiment", "Neutral"))[:50],
         "confidence_score": confidence_score,
         "estimated_resolution_time": str(ai_data.get("estimated_resolution_time", ""))[:50],
-        "recommended_resolution_path": str(ai_data.get("recommended_resolution_path", "Assign to department")),
-        "auto_resolve_response": ai_data.get("auto_resolve_response"),
+        "recommended_resolution_path": route,
+        "auto_resolve_response": auto_resolve_response,
     }
 
 
@@ -55,9 +148,9 @@ class TicketViewSet(viewsets.ModelViewSet):
         title = input_serializer.validated_data["title"]
         description = input_serializer.validated_data["description"]
 
-        ai_data = _normalize_ai_response(analyze_ticket_text(title, description))
+        ai_data = _normalize_ai_response(analyze_ticket_text(title, description), title=title, description=description)
         route = ai_data.get("recommended_resolution_path", "")
-        is_auto_resolve = "Auto-resolve" in route
+        is_auto_resolve = route == AUTO_RESOLVE_PATH
 
         with transaction.atomic():
             ticket = Ticket.objects.create(
@@ -111,12 +204,12 @@ class TicketViewSet(viewsets.ModelViewSet):
     def analyze(self, request):
         title = request.data.get("subject") or request.data.get("title", "")
         description = request.data.get("description", "")
-        ai_data = _normalize_ai_response(analyze_ticket_text(title, description))
+        ai_data = _normalize_ai_response(analyze_ticket_text(title, description), title=title, description=description)
         return Response({
             "category": ai_data.get("category", "Other"),
             "summary": ai_data.get("summary", ""),
             "severity": ai_data.get("severity", "Low"),
-            "resolutionPath": ai_data.get("recommended_resolution_path", "Assign to department"),
+            "resolutionPath": ai_data.get("recommended_resolution_path", ASSIGN_PATH),
             "sentiment": ai_data.get("sentiment", "Neutral"),
             "suggestedDepartment": ai_data.get("predicted_department"),
             "confidenceScore": ai_data.get("confidence_score"),
